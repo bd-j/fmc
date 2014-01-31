@@ -6,7 +6,7 @@
 
         double precision :: lp
 
-        call emcee_lnprob (ndim,pars(:,1),lp)
+        call emcee_lnprob (ndim, pars(:, 2), lp)
         write(*,*) lp
 
       end subroutine

@@ -7,7 +7,7 @@
         integer :: i
 
         lp = 1.d0
-        do i=1,n
+        do i=1,ndim
           lp = lp + p(i)*p(i)
         enddo
 
@@ -20,9 +20,12 @@
         double precision, dimension(nwalkers) :: lp
 
         integer :: i, j
+
+        call init_random_seed()
+
         do j=1,nwalkers
           do i=1,ndim
-            pos(i,j) = 1.d0
+            call random_number(pos(i,j))
           enddo
         enddo
 
