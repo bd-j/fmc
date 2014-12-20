@@ -57,8 +57,8 @@
         double precision, dimension(ndim) :: q
 
         INTEGER, intent(in) :: nworkers
-        DOUBLE PRECISION, dimension(nwalkers) :: zarr
-        INTEGER :: workerid
+        DOUBLE PRECISION, dimension(nwalkers) :: zarr, rqst, rstat
+        INTEGER :: workerid, status(MPI_STATUS_SIZE)
         
         ! Loop over the walkers to propose new positions and send them
         ! to workers
@@ -83,17 +83,19 @@
            ! Compute the proposal position.
            q = (1.d0 - z) * q + z * pin(:, k)
            ! Dispatch proposal to a worker to figure out lnp
-           MPI_ISEND(q, ndim, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, ierr)   
+           call MPI_ISEND(q, ndim, MPI_DOUBLE_PRECISION, &
+                workerid, k, MPI_COMM_WORLD, rqst(k), ierr)   
         enddo
 
+        call MPI_Waitall(nk, rqst, rstat)
+        
         ! Loop over the walkers to get the proposal lnp,
         ! accept/reject, and update
         do k=1,nwalkers
            ! Which worker had this proposal?
            workerid = mod(k,nworkers) + 1
            ! Get the answer from that worker
-           MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
+           call MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, status, ierr)
            diff = (ndim - 1.d0) * log(zarr(k)) + lp - lpin(k)
 
@@ -123,7 +125,7 @@
       end subroutine
 
 
-      subroutine function_parallel_map(ndim, nk, nworkers, pos, lnp)
+      subroutine function_parallel_map(ndim, nk, nworkers, pos, lnpout)
         !
         ! This subroutine sends rows of the pos array to whatever
         ! function is set up to receive them in a different process,
@@ -135,24 +137,25 @@
 
         integer, intent(in) :: ndim, nk, nworkers
         double precision, intent(in), dimension(ndim,nk) :: pos
-        double precision, intent(out), dimension(nk) :: lnp
+        double precision, intent(out), dimension(nk) :: lnpout
 
-        integer :: k, workerid
-        double precision :: one_lnp
+        integer :: k, workerid, status(MPI_STATUS_SIZE)
+        double precision :: lp
+        double precision, dimension(nk) :: rqst, rstat
         
         ! Send parameter positions to processes
         do k=1,nk
            workerid = mod(k,nworkers) + 1
-           MPI_ISEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, ierr)   
+           call MPI_ISEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
+                workerid, k, MPI_COMM_WORLD, rqst(k), ierr)   
         enddo
-
+        call MPI_Waitall(nk, rqst, rstat)
         ! Collect results
         do k=1,nk
            workerid = mod(k,nworkers) + 1
-           MPI_RECV(one_lnp, 1, MPI_DOUBLE_PRECISION, &
+           call MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, status, ierr)
-           lnp(k) = one_lnp
+           lnpout(k) = lp
         enddo
         
       end subroutine
