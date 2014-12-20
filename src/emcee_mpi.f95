@@ -1,5 +1,5 @@
-      subroutine emcee_advance (ndim, nwalkers, a, pin, lpin, &
-                                pout, lpout, accept, nproc)
+        subroutine emcee_advance_mpi (ndim, nwalkers, a, pin, lpin, &
+                                      pout, lpout, accept, nworkers)
 
         ! This subroutine advances an ensemble of walkers using the
         ! Goodman & Weare stretch move.
@@ -23,8 +23,9 @@
         ! lpin [double precision (nwalkers)]:
         !   The value of the log-probability function at positions `pin`.
         !
-        ! nproc [integer]:
-        !   The number of processors
+        ! nworkers [integer]:
+        !   The number of available workers, not including the master
+        !   process, which is assumed to be workerid=0
         
         ! Outputs
         ! -------
@@ -39,6 +40,7 @@
         !   A binary list indicating whether or not each proposal was
         !   accepted.
 
+        include 'mpif.h'
         implicit none
 
         integer, intent(in) :: ndim, nwalkers
@@ -50,46 +52,66 @@
         double precision, intent(out), dimension(nwalkers) :: lpout
         integer, intent(out), dimension(nwalkers) :: accept
 
-        integer :: k, ri, pid
-        DOUBLE PRECISION, dimension(ndim) :: r, z, lp, diff
+        integer :: k, ri
+        double precision :: r, z, lp, diff
+        double precision, dimension(ndim) :: q
 
-        INTEGER, intent(in) :: nproc
+        INTEGER, intent(in) :: nworkers
+        DOUBLE PRECISION, dimension(nwalkers) :: zarr
+        INTEGER :: workerid
         
-        if (mod(nwalkers,2).ne.0) then
-           write(*,*) 'nwalkers must be even'
-        endif
-        nk = nwalkers/2
-        ! Compute a random stretch factor.
-        call random_number(r)
-        z = (a - 1.d0) * r + 1.d0
-        z = z * z / a
-        ! Loop over the walkers
-        do k=1,nk
-           q(:, k) = (1.d0 - z(k)) * pin(:, k+nk)  + z(k) * pin(:, k)
-           q(:, nk+k) = (1.d0 - z(k+nk)) * pin(:, k)  + z(k+nk) * pin(:, k+nk)
-        enddo
-        ! Get new lnprob in parallel
-        call function_parallel_map(ndim, nk, nproc-1, q, lp)
-        diff = (ndim - 1.d0) * log(z) + lp - lpin
-
-        call random_number(r)
+        ! Loop over the walkers to propose new positions and send them
+        ! to workers
         do k=1,nwalkers
+           ! Which worker does this go to?
+           workerid = mod(k,nworkers) + 1
            
-          ! Accept or reject.
-          if (diff(k) .ge. 0.d0) then
-            accept(k) = 1
-          else
-            
-            if (diff .ge. log(r(k))) then
+           ! Compute a random stretch factor and store it
+           call random_number(r)
+           z = (a - 1.d0) * r + 1.d0
+           z = z * z / a
+           zarr(k) = z
+           
+           ! Select the helper walker.
+           call random_number(r)
+           ri = ceiling((nwalkers-1) * r)
+           if (ri .ge. k) then
+              ri = ri + 1
+           endif
+           q = pin(:, ri)
+           
+           ! Compute the proposal position.
+           q = (1.d0 - z) * q + z * pin(:, k)
+           ! Dispatch proposal to a worker to figure out lnp
+           MPI_ISEND(q, ndim, MPI_DOUBLE_PRECISION, &
+                workerid, k, MPI_COMM_WORLD, ierr)   
+        enddo
+
+        ! Loop over the walkers to get the proposal lnp,
+        ! accept/reject, and update
+        do k=1,nwalkers
+           ! Which worker had this proposal?
+           workerid = mod(k,nworkers) + 1
+           ! Get the answer from that worker
+           MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
+                workerid, k, MPI_COMM_WORLD, status, ierr)
+           diff = (ndim - 1.d0) * log(zarr(k)) + lp - lpin(k)
+
+           ! Accept or reject.
+           if (diff .ge. 0.d0) then
               accept(k) = 1
-            else
-              accept(k) = 0
-            endif
-          endif
+           else
+              call random_number(r)
+              if (diff .ge. log(r)) then
+                 accept(k) = 1
+              else
+                 accept(k) = 0
+              endif
+           endif
 
           ! Do the update.
           if (accept(k) .eq. 1) then
-            pout(:, k) = q(:,k)
+            pout(:, k) = q
             lpout(k) = lp
           else
             pout(:, k) = pin(:, k)
@@ -97,14 +119,14 @@
           endif
 
         enddo
-
+     
       end subroutine
 
 
       subroutine function_parallel_map(ndim, nk, nworkers, pos, lnp)
         !
         ! This subroutine sends rows of the pos array to whatever
-        ! function is set up to receive them in different processes,
+        ! function is set up to receive them in a different process,
         ! and collects the results.  This could probably be done with
         ! scatter/gather, but I don't know how to use those yet.
         !

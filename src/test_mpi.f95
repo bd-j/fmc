@@ -106,12 +106,12 @@
               ! log-probability of the ensemble at each step. This works but
               ! you also have the option of saving the samples by giving
               ! different input and output arguments.
-              call emcee_advance (ndim,nwalkers,2.d0,pos,lp,pos,lp,accept,ntasks-1)
+              call emcee_advance_mpi (ndim,nwalkers,2.d0,pos,lp,pos,lp,accept,ntasks-1)
            enddo
 
            ! Run a production chain of 500 steps and print to `stdout`.
            do i=1,500
-              call emcee_advance (ndim,nwalkers,2.d0,pos,lp,pos,lp,accept)
+              call emcee_advance_mpi (ndim,nwalkers,2.d0,pos,lp,pos,lp,accept,ntasks-1)
               do j=1,nwalkers
                  write(*,*) pos(:, j), lp(j)
               enddo
