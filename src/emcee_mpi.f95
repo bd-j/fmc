@@ -40,7 +40,7 @@
         !   A binary list indicating whether or not each proposal was
         !   accepted.
 
-        include 'mpif.h'
+        use mpi
         implicit none
 
         integer, intent(in) :: ndim, nwalkers
@@ -54,12 +54,15 @@
 
         integer :: k, ri
         double precision :: r, z, lp, diff
-        double precision, dimension(ndim) :: q
-
-        INTEGER, intent(in) :: nworkers
-        DOUBLE PRECISION, dimension(nwalkers) :: zarr, rqst, rstat
-        INTEGER :: workerid, status(MPI_STATUS_SIZE)
         
+        INTEGER, intent(in) :: nworkers
+        DOUBLE PRECISION, dimension(nwalkers) :: zarr
+        INTEGER :: workerid, ierr, status(MPI_STATUS_SIZE)
+        INTEGER, dimension(nwalkers) :: rqst, rstat
+        DOUBLE PRECISION, dimension(ndim,nwalkers) :: qarr
+
+        
+        rqst = MPI_REQUEST_NULL
         ! Loop over the walkers to propose new positions and send them
         ! to workers
         do k=1,nwalkers
@@ -76,18 +79,18 @@
            call random_number(r)
            ri = ceiling((nwalkers-1) * r)
            if (ri .ge. k) then
-              ri = ri + 1
+              ri = ri + 2
            endif
-           q = pin(:, ri)
+
+           ! Compute the proposal position and store it
+           qarr(:,k) = (1.d0 - z) * pin(:, ri) + z * pin(:, k)
            
-           ! Compute the proposal position.
-           q = (1.d0 - z) * q + z * pin(:, k)
            ! Dispatch proposal to a worker to figure out lnp
-           call MPI_ISEND(q, ndim, MPI_DOUBLE_PRECISION, &
+           call MPI_ISEND(qarr(:,k), ndim, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, rqst(k), ierr)   
         enddo
 
-        call MPI_Waitall(nk, rqst, rstat)
+        call MPI_Waitall(nwalkers, rqst, rstat, ierr)
         
         ! Loop over the walkers to get the proposal lnp,
         ! accept/reject, and update
@@ -97,6 +100,7 @@
            ! Get the answer from that worker
            call MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, status, ierr)
+           !write(*,*) workerid, k, lp
            diff = (ndim - 1.d0) * log(zarr(k)) + lp - lpin(k)
 
            ! Accept or reject.
@@ -113,7 +117,7 @@
 
           ! Do the update.
           if (accept(k) .eq. 1) then
-            pout(:, k) = q
+            pout(:, k) = qarr(:, k)
             lpout(k) = lp
           else
             pout(:, k) = pin(:, k)
@@ -121,7 +125,7 @@
           endif
 
         enddo
-     
+        
       end subroutine
 
 
@@ -132,24 +136,25 @@
         ! and collects the results.  This could probably be done with
         ! scatter/gather, but I don't know how to use those yet.
         !
-        include "mpif.h"
+        use mpi
         implicit none
 
         integer, intent(in) :: ndim, nk, nworkers
         double precision, intent(in), dimension(ndim,nk) :: pos
         double precision, intent(out), dimension(nk) :: lnpout
 
-        integer :: k, workerid, status(MPI_STATUS_SIZE)
+        integer :: k, workerid, ierr, status(MPI_STATUS_SIZE)
         double precision :: lp
-        double precision, dimension(nk) :: rqst, rstat
-        
+        integer, dimension(nk) :: rqst, rstat
+
+        rqst = MPI_REQUEST_NULL
         ! Send parameter positions to processes
         do k=1,nk
            workerid = mod(k,nworkers) + 1
            call MPI_ISEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, rqst(k), ierr)   
         enddo
-        call MPI_Waitall(nk, rqst, rstat)
+        call MPI_Waitall(nk, rqst, rstat, ierr)
         ! Collect results
         do k=1,nk
            workerid = mod(k,nworkers) + 1

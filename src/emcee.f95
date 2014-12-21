@@ -62,12 +62,12 @@
           call random_number(r)
           ri = ceiling((nwalkers-1) * r)
           if (ri .ge. k) then
-            ri = ri + 1
-            q = pin(:, ri+1)
-          else
-            q = pout(:, ri)
+            ri = ri + 2
+          !  q = pin(:, ri+1)
+          !else
+          !  q = pout(:, ri)
           endif
-
+          q = pin(:, ri)
           ! Compute the proposal position.
           q = (1.d0 - z) * q + z * pin(:, k)
 

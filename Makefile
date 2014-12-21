@@ -1,2 +1,2 @@
 test: src/*.f95
-	gfortran src/emcee.f95 src/test.f95 -o bin/test
+	mpifort src/emcee_mpi.f95 src/test_mpi.f95 -o bin/test_mpi
