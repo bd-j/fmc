@@ -58,17 +58,15 @@
         INTEGER, intent(in) :: nworkers
         DOUBLE PRECISION, dimension(nwalkers) :: zarr
         INTEGER :: workerid, ierr, status(MPI_STATUS_SIZE)
-        INTEGER, dimension(nwalkers) :: rqst, rstat
+        !INTEGER, dimension(nwalkers) :: rqst, rstat
         DOUBLE PRECISION, dimension(ndim,nwalkers) :: qarr
-        DOUBLE PRECISION, dimension(ndim) :: q
         
-        rqst = MPI_REQUEST_NULL
+        !rqst = MPI_REQUEST_NULL
+        
         ! Loop over the walkers to propose new positions and send them
         ! to workers
         do k=1,nwalkers
-           ! Which worker does this go to?
-           workerid = mod(k,nworkers) + 1
-           
+                      
            ! Compute a random stretch factor and store it
            call random_number(r)
            z = (a - 1.d0) * r + 1.d0
@@ -84,10 +82,12 @@
 
            ! Compute the proposal position and store it
            qarr(:,k) = (1.d0 - z) * pin(:, ri) + z * pin(:, k)
-           q = qarr(:,k)
+
+           ! Which worker does this go to?
+           workerid = mod(k,nworkers) + 1
            
-           ! Dispatch proposal to a worker to figure out lnp
-           call MPI_SEND(q, ndim, MPI_DOUBLE_PRECISION, &
+           ! Dispatch proposal to worker to figure out lnp
+           call MPI_SEND(qarr(:,k), ndim, MPI_DOUBLE_PRECISION, &
                 workerid, k, MPI_COMM_WORLD, ierr)   
         enddo
 
@@ -96,6 +96,7 @@
         ! Loop over the walkers to get the proposal lnp,
         ! accept/reject, and update
         do k=1,nwalkers
+           
            ! Which worker had this proposal?
            workerid = mod(k,nworkers) + 1
            ! Get the answer from that worker
@@ -133,11 +134,24 @@
         ! This subroutine sends dummy position arrays to each slave,
         ! and uses a tag value that is larger then the total number of
         ! walkers.  The slaves should interpret this tag as a signal
-        ! to break out of the event loop.
+        ! to break out of their event loops.
+        !
+        ! Inputs
+        ! ------
+        !
+        ! ndim [integer]:
+        !   The dimension of the parameter space.
+        !
+        ! nwalkers [integer]:
+        !   The number of walkers.
+        !
+        ! nworkers [integer]:
+        !   The number of worker processes that need to be closed
         !
         
         use mpi
         implicit none
+        
         integer, intent(in) :: ndim, nwalkers, nworkers
         double precision, dimension(ndim) :: dummy
         integer :: k, ierr
@@ -147,6 +161,7 @@
            call MPI_SEND(dummy, ndim, MPI_DOUBLE_PRECISION, &
                 k, nwalkers + 10, MPI_COMM_WORLD, ierr)
         enddo
+        
       end subroutine 
       
       subroutine function_parallel_map(ndim, nk, nworkers, pos, lnpout)
@@ -156,6 +171,28 @@
         ! and collects the results.  This could probably be done with
         ! scatter/gather, but I don't know how to use those yet.
         !
+        ! Inputs
+        ! ------
+        !
+        ! ndim [integer]:
+        !   The dimension of the parameter space.
+        !
+        ! nk [integer]:
+        !   The number of walkers.
+        !        
+        ! nworkers [integer]:
+        !   The number of worker processes.
+        !
+        ! pos [double precision (ndim, nk)]:
+        !   The positions of the walkers in parameter space.
+        !
+        ! Outputs
+        ! ------
+        !
+        ! lnpout [double precision (nwalkers)]:
+        !   The value of the log-probability function at positions `pos`.
+        !
+
         use mpi
         implicit none
 
@@ -165,16 +202,19 @@
 
         integer :: k, workerid, ierr, status(MPI_STATUS_SIZE)
         double precision :: lp
-        integer, dimension(nk) :: rqst, rstat
+        !integer, dimension(nk) :: rqst, rstat
 
-        rqst = MPI_REQUEST_NULL
+        !rqst = MPI_REQUEST_NULL
+        
         ! Send parameter positions to processes
         do k=1,nk
            workerid = mod(k,nworkers) + 1
-           call MPI_ISEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, rqst(k), ierr)   
+           call MPI_SEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
+                workerid, k, MPI_COMM_WORLD, ierr)   
         enddo
-        call MPI_Waitall(nk, rqst, rstat, ierr)
+        
+        !call MPI_Waitall(nk, rqst, rstat, ierr)
+        
         ! Collect results
         do k=1,nk
            workerid = mod(k,nworkers) + 1
