@@ -69,7 +69,8 @@
               call MPI_RECV(one_pos, ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
               received_tag = status(MPI_TAG)
-           
+              !Check if this is the kill signal
+              if (received_tag .GT. nwalkers) EXIT
               ! Calculate the probability for this parameter position.
               call emcee_lnprob(ndim, one_pos, one_lnp)
               !write(*,*) taskid, received_tag, one_pos, one_lnp
@@ -130,6 +131,9 @@
                  write(*,*) pos(:, j), lp(j)
               enddo
            enddo
+           !break the worker out of their event loops
+           call close_pool(ndim, nwalkers, ntasks-1)
+           
         endif
         
         call MPI_FINALIZE(ierr)
