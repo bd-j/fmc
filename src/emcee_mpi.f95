@@ -129,7 +129,7 @@
         
       end subroutine
 
-      subroutine close_pool(ndim, nwalkers, nworkers)
+      subroutine free_workers(ndim, nwalkers, nworkers)
         !
         ! This subroutine sends dummy position arrays to each slave,
         ! and uses a tag value that is larger then the total number of

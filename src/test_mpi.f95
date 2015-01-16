@@ -66,7 +66,8 @@
            ! Start event loop
            do while (wait)
               ! Get the parameter value from the master, and figure out
-              ! what tag it was sent with
+              ! what tag it was sent with.  This call does not return until
+              ! until a parameter vector is received
               call MPI_RECV(one_pos, ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
               received_tag = status(MPI_TAG)
@@ -83,7 +84,7 @@
            
         endif
 
-        ! The master process must get intial positions and then
+        ! The master process must generate intial positions and then
         ! call emcee_advance_mpi
         if (taskid.eq.masterid) then
            
@@ -125,7 +126,7 @@
            
            ! Break the workers out of their event loops so they can
            ! close
-           call close_pool(ndim, nwalkers, ntasks-1)
+           call free_workers(ndim, nwalkers, ntasks-1)
            
         endif
         
