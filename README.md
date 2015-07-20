@@ -1,11 +1,19 @@
-This is a *very simple* Fortran implementation of the [emcee](https://github.com/dfm/emcee) algorithm.
+This is an MPI parallelized version of a *very simple* Fortran
+implementation of the [emcee](https://github.com/dfm/emcee)
+algorithm.  See [fmc](https://github.com/dfm/fmc) for the
+unparallelized version from which this is adapted.
 
-See `src/test.f95` for a demo and run it as follows:
+You must have already installed some version of MPI (e.g. mvapich2,
+openMPI).
+
+See `src/test_mpi.f95` for a demo and run it as follows:
 
 ```
 make
-bin/test
+mpirun -np <np> bin/test_mpi
 ```
+
+where `<np>` is the number (>1) of processors that you want to use.
 
 The results will be printed to `stdout`.
 
