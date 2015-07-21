@@ -53,18 +53,17 @@
         integer, intent(out), dimension(nwalkers) :: accept
 
         integer :: k, ri
-        double precision :: r, z, lp, diff
+        double precision :: r, z, diff
         
         INTEGER, intent(in) :: nworkers
-        DOUBLE PRECISION, dimension(nwalkers) :: zarr
-        INTEGER :: workerid, ierr, status(MPI_STATUS_SIZE)
+        DOUBLE PRECISION, dimension(nwalkers) :: zarr, lpnew, lp
+        INTEGER :: ierr, status(MPI_STATUS_SIZE), BEGIN=0
+        INTEGER :: npos, walk_per_work, extra, offset
         !INTEGER, dimension(nwalkers) :: rqst, rstat
         DOUBLE PRECISION, dimension(ndim,nwalkers) :: qarr
-        
+                
         !rqst = MPI_REQUEST_NULL
-        
-        ! Loop over the walkers to propose new positions and send them
-        ! to workers
+        ! Loop over the walkers to propose new positions
         do k=1,nwalkers
                       
            ! Compute a random stretch factor and store it
@@ -83,26 +82,54 @@
            ! Compute the proposal position and store it
            qarr(:,k) = (1.d0 - z) * pin(:, ri) + z * pin(:, k)
 
-           ! Which worker does this go to?
-           workerid = mod(k,nworkers) + 1
+        enddo
+        
+        !Compute useful numbers for worker to walker ratio
+        walk_per_work = nwalkers/nworkers
+        ! number of extra jobs or positions that need to be spread
+        ! amongs the first set of workers
+        extra = mod(nwalkers,nworkers)
+        
+        ! Send chunks of new positions to workers
+        offset = 1
+        do k=1,nworkers
+           if (k .le. extra) then
+              !add an extra position
+              npos = walk_per_work + 1
+           else
+              npos = walk_per_work
+           endif
+           ! Tell the worker how many positions to expect
+           call MPI_SEND(npos, 1, MPI_INTEGER, &
+                k, BEGIN, MPI_COMM_WORLD, ierr)
+           ! Dispatch proposals to worker to figure out lnp
+           call MPI_SEND(qarr(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
+                k, BEGIN, MPI_COMM_WORLD, ierr)
            
-           ! Dispatch proposal to worker to figure out lnp
-           call MPI_SEND(qarr(:,k), ndim, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, ierr)   
+           ! now increment offset
+           offset = offset + npos
         enddo
 
-        !call MPI_Waitall(nwalkers, rqst, rstat, ierr)
-        
-        ! Loop over the walkers to get the proposal lnp,
-        ! accept/reject, and update
+        ! Loop over the workers to get the proposal lnp
+        offset=1
+        do k=1,nworkers
+           if (k .le. extra) then
+              !add an extra position
+              npos = walk_per_work + 1
+           else
+              npos = walk_per_work
+           endif
+           ! get the lnps from the workers and store
+           call MPI_RECV(lpnew(offset), npos, MPI_DOUBLE_PRECISION, &
+                k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
+           
+           offset = offset + npos
+        enddo
+                
+        ! Now loop over walkers to accept/reject, and update
         do k=1,nwalkers
            
-           ! Which worker had this proposal?
-           workerid = mod(k,nworkers) + 1
-           ! Get the answer from that worker
-           call MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, status, ierr)
-           diff = (ndim - 1.d0) * log(zarr(k)) + lp - lpin(k)
+           diff = (ndim - 1.d0) * log(zarr(k)) + lpnew(k) - lpin(k)
 
            ! Accept or reject.
            if (diff .ge. 0.d0) then
@@ -119,7 +146,7 @@
           ! Do the update.
           if (accept(k) .eq. 1) then
             pout(:, k) = qarr(:, k)
-            lpout(k) = lp
+            lpout(k) = lpnew(k)
           else
             pout(:, k) = pin(:, k)
             lpout(k) = lpin(k)
@@ -129,7 +156,7 @@
         
       end subroutine
 
-      subroutine free_workers(ndim, nwalkers, nworkers)
+      subroutine free_workers(nworkers)
         !
         ! This subroutine sends dummy position arrays to each slave,
         ! and uses a tag value that is larger then the total number of
@@ -152,14 +179,13 @@
         use mpi
         implicit none
         
-        integer, intent(in) :: ndim, nwalkers, nworkers
-        double precision, dimension(ndim) :: dummy
-        integer :: k, ierr
+        integer, intent(in) :: nworkers
+        integer :: k, ierr, FREE=99, dummy=0
 
-        dummy = 0.0
         do k=1,nworkers
-           call MPI_SEND(dummy, ndim, MPI_DOUBLE_PRECISION, &
-                k, nwalkers + 10, MPI_COMM_WORLD, ierr)
+           write(*,*) k
+           call MPI_SEND(dummy, 1, MPI_INTEGER, &
+                k, FREE, MPI_COMM_WORLD, ierr)
         enddo
         
       end subroutine 
@@ -200,27 +226,52 @@
         double precision, intent(in), dimension(ndim,nk) :: pos
         double precision, intent(out), dimension(nk) :: lnpout
 
-        integer :: k, workerid, ierr, status(MPI_STATUS_SIZE)
-        double precision :: lp
+        integer :: k, ierr, status(MPI_STATUS_SIZE), BEGIN=0
+        integer :: npos, walk_per_work, extra, offset
         !integer, dimension(nk) :: rqst, rstat
 
         !rqst = MPI_REQUEST_NULL
+        !Compute useful numbers for worker to walker ratio
+        walk_per_work = nk/nworkers
+        ! number of extra jobs or positions that need to be spread
+        ! amongs the first set of workers
+        extra = mod(nk,nworkers)
         
-        ! Send parameter positions to processes
-        do k=1,nk
-           workerid = mod(k,nworkers) + 1
-           call MPI_SEND(pos(:,k), ndim, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, ierr)   
+        ! Send chunks of new positions to workers
+        offset = 1
+        do k=1,nworkers
+           if (k .le. extra) then
+              !add an extra position
+              npos = walk_per_work + 1
+           else
+              npos = walk_per_work
+           endif
+           ! Tell the worker how many positions to expect
+           call MPI_SEND(npos, 1, MPI_INTEGER, &
+                k, BEGIN, MPI_COMM_WORLD, ierr)
+           ! Dispatch proposals to worker to figure out lnp
+           call MPI_SEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
+                k, BEGIN, MPI_COMM_WORLD, ierr)
+           
+           ! now increment offset
+           offset = offset + npos
         enddo
-        
-        !call MPI_Waitall(nk, rqst, rstat, ierr)
-        
-        ! Collect results
-        do k=1,nk
-           workerid = mod(k,nworkers) + 1
-           call MPI_RECV(lp, 1, MPI_DOUBLE_PRECISION, &
-                workerid, k, MPI_COMM_WORLD, status, ierr)
-           lnpout(k) = lp
+
+        ! Loop over the workers to get the proposal lnp
+        offset=1
+        do k=1,nworkers
+           if (k .le. extra) then
+              !add an extra position
+              npos = walk_per_work + 1
+           else
+              npos = walk_per_work
+           endif
+
+           ! get the lnps from the workers and store
+           call MPI_RECV(lnpout(offset), npos, MPI_DOUBLE_PRECISION, &
+                k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
+           
+           offset = offset + npos
         enddo
         
       end subroutine
