@@ -47,10 +47,10 @@
         integer, dimension(nwalkers) :: accept
         integer :: i, j
 
-        INTEGER, parameter :: masterid=0
+        INTEGER, parameter :: masterid=0, KILL=99, BEGIN=0
         DOUBLE PRECISION :: one_lnp
         INTEGER :: ierr, taskid, ntasks, rqst, received_tag, status(MPI_STATUS_SIZE)
-        INTEGER :: k, npos, KILL=99, BEGIN=0
+        INTEGER :: k, npos
         LOGICAL :: wait=.TRUE.
 
         ! Initialize MPI, and get the total number of processes and
@@ -65,15 +65,18 @@
            
            ! Start event loop
            do while (wait)
-              ! Get the number of parameter positions that were sent
+              ! Get the number of parameter positions that were
+              ! sent. This call does not return until until a
+              ! an integer is received
               call MPI_RECV(npos, 1, MPI_INTEGER, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
-              ! figure out what tag it was sent with.  This call does not return until
-              ! until a parameter vector is received
+              ! figure out what tag it was sent with.  
               received_tag = status(MPI_TAG)
               ! Check if this is the kill tag
               if ((received_tag .EQ. KILL) .OR. (npos.EQ.0)) EXIT
-              ! Otherwise look for data from the master
+              ! Otherwise look for data from the master.  This call
+              ! does not return until a set of parameter vectors is
+              ! received
               call MPI_RECV(pos(1,1), npos*ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
 
@@ -83,14 +86,14 @@
                  lp(k) = one_lnp
               enddo
               
-              ! Send that back to the master
+              ! Send the probabilities back to the master
               call MPI_ISEND(lp(1), npos, MPI_DOUBLE_PRECISION, &
                    masterid, BEGIN, MPI_COMM_WORLD, rqst, ierr)
            enddo
            
         endif
 
-        ! The master process must generate intial positions and then
+        ! The master process must generate initial positions and then
         ! call emcee_advance_mpi
         if (taskid.eq.masterid) then
            
@@ -135,7 +138,6 @@
            write(*,*) "free comrades"
            ! Break the workers out of their event loops so they can
            ! close
-           !call MPI_Barrier( MPI_COMM_WORLD )
            call free_workers(ntasks-1)
            
         endif

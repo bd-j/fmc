@@ -1,5 +1,5 @@
-        subroutine emcee_advance_mpi (ndim, nwalkers, a, pin, lpin, &
-                                      pout, lpout, accept, nworkers)
+      subroutine emcee_advance_mpi (ndim, nwalkers, a, pin, lpin, &
+                                    pout, lpout, accept, nworkers)
 
         ! This subroutine advances an ensemble of walkers using the
         ! Goodman & Weare stretch move.
@@ -59,7 +59,6 @@
         DOUBLE PRECISION, dimension(nwalkers) :: zarr, lpnew
         DOUBLE PRECISION, dimension(ndim,nwalkers) :: qarr
                 
-        !rqst = MPI_REQUEST_NULL
         ! Loop over the walkers to propose new positions
         do k=1,nwalkers
                       
@@ -123,12 +122,6 @@
         ! Inputs
         ! ------
         !
-        ! ndim [integer]:
-        !   The dimension of the parameter space.
-        !
-        ! nwalkers [integer]:
-        !   The number of walkers.
-        !
         ! nworkers [integer]:
         !   The number of worker processes that need to be closed
         !
@@ -186,11 +179,10 @@
         integer :: npos, walk_per_work, extra, offset
         !integer, dimension(nk) :: rqst, rstat
 
-        !rqst = MPI_REQUEST_NULL
         !Compute useful numbers for worker to walker ratio
         walk_per_work = nk/nworkers
         ! number of extra jobs or positions that need to be spread
-        ! amongs the first set of workers
+        ! amongst the first set of workers
         extra = mod(nk,nworkers)
         
         ! Send chunks of new positions to workers
@@ -208,7 +200,6 @@
            ! Dispatch proposals to worker to figure out lnp
            call MPI_SEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
                 k, BEGIN, MPI_COMM_WORLD, ierr)
-           
            ! now increment offset
            offset = offset + npos
         enddo
@@ -222,11 +213,10 @@
            else
               npos = walk_per_work
            endif
-
            ! get the lnps from the workers and store
            call MPI_RECV(lnpout(offset), npos, MPI_DOUBLE_PRECISION, &
                 k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
-           
+           ! now increment offset
            offset = offset + npos
         enddo
         
