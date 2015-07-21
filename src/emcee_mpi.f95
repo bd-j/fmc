@@ -83,48 +83,8 @@
            qarr(:,k) = (1.d0 - z) * pin(:, ri) + z * pin(:, k)
 
         enddo
-        
-        !Compute useful numbers for worker to walker ratio
-        walk_per_work = nwalkers/nworkers
-        ! number of extra jobs or positions that need to be spread
-        ! amongs the first set of workers
-        extra = mod(nwalkers,nworkers)
-        
-        ! Send chunks of new positions to workers
-        offset = 1
-        do k=1,nworkers
-           if (k .le. extra) then
-              !add an extra position
-              npos = walk_per_work + 1
-           else
-              npos = walk_per_work
-           endif
-           ! Tell the worker how many positions to expect
-           call MPI_SEND(npos, 1, MPI_INTEGER, &
-                k, BEGIN, MPI_COMM_WORLD, ierr)
-           ! Dispatch proposals to worker to figure out lnp
-           call MPI_SEND(qarr(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
-                k, BEGIN, MPI_COMM_WORLD, ierr)
-           
-           ! now increment offset
-           offset = offset + npos
-        enddo
 
-        ! Loop over the workers to get the proposal lnp
-        offset=1
-        do k=1,nworkers
-           if (k .le. extra) then
-              !add an extra position
-              npos = walk_per_work + 1
-           else
-              npos = walk_per_work
-           endif
-           ! get the lnps from the workers and store
-           call MPI_RECV(lpnew(offset), npos, MPI_DOUBLE_PRECISION, &
-                k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
-           
-           offset = offset + npos
-        enddo
+        call function_parallel_map(ndim, nwalkers, nworkers, qarr, lpnew)
                 
         ! Now loop over walkers to accept/reject, and update
         do k=1,nwalkers

@@ -131,13 +131,13 @@
            do i=1,500
               call emcee_advance_mpi (ndim,nwalkers,2.d0,pos,lp,pos,lp,accept,ntasks-1)
               do j=1,nwalkers
-                 !write(*,*) pos(:, j), lp(j)
+                 write(*,*) pos(:, j), lp(j)
               enddo
            enddo
            write(*,*) "free"
            ! Break the workers out of their event loops so they can
            ! close
-           call MPI_Barrier( MPI_COMM_WORLD )
+           !call MPI_Barrier( MPI_COMM_WORLD )
            call free_workers(ndim, ntasks-1)
            
         endif
