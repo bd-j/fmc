@@ -68,24 +68,22 @@
               ! Get the number of parameter positions that were sent
               call MPI_RECV(npos, 1, MPI_INTEGER, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
-              ! Get the parameter values from the master, and figure out
-              ! what tag it was sent with.  This call does not return until
+              ! figure out what tag it was sent with.  This call does not return until
               ! until a parameter vector is received
               received_tag = status(MPI_TAG)
-              write(*,*) received_tag, npos, ((received_tag .EQ. KILL) .OR. (npos.EQ.0))
               ! Check if this is the kill tag
               if ((received_tag .EQ. KILL) .OR. (npos.EQ.0)) EXIT
-              ! Otherwise look for data
+              ! Otherwise look for data from the master
               call MPI_RECV(pos(1,1), npos*ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
 
-              ! Calculate the probability for this parameter position.
+              ! Calculate the probability for these parameter positions.
               do k=1,npos
                  call emcee_lnprob(ndim, pos(:,k), one_lnp)
                  lp(k) = one_lnp
               enddo
               
-              ! Send that back to the master, with the correct tag
+              ! Send that back to the master
               call MPI_ISEND(lp(1), npos, MPI_DOUBLE_PRECISION, &
                    masterid, BEGIN, MPI_COMM_WORLD, rqst, ierr)
            enddo
@@ -113,7 +111,7 @@
            enddo
            
            ! Compute the initial log-probability, in parallel
-           write(*,*) "parallel map"
+           write(*,*) "initialization"
            call function_parallel_map (ndim, nwalkers, ntasks-1, pos, lp)
 
            ! Start by running a burn-in of 200 steps.
@@ -134,11 +132,11 @@
                  write(*,*) pos(:, j), lp(j)
               enddo
            enddo
-           write(*,*) "free"
+           write(*,*) "free comrades"
            ! Break the workers out of their event loops so they can
            ! close
            !call MPI_Barrier( MPI_COMM_WORLD )
-           call free_workers(ndim, ntasks-1)
+           call free_workers(ntasks-1)
            
         endif
         

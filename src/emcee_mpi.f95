@@ -56,10 +56,7 @@
         double precision :: r, z, diff
         
         INTEGER, intent(in) :: nworkers
-        DOUBLE PRECISION, dimension(nwalkers) :: zarr, lpnew, lp
-        INTEGER :: ierr, status(MPI_STATUS_SIZE), BEGIN=0
-        INTEGER :: npos, walk_per_work, extra, offset
-        !INTEGER, dimension(nwalkers) :: rqst, rstat
+        DOUBLE PRECISION, dimension(nwalkers) :: zarr, lpnew
         DOUBLE PRECISION, dimension(ndim,nwalkers) :: qarr
                 
         !rqst = MPI_REQUEST_NULL
@@ -143,7 +140,6 @@
         integer :: k, ierr, FREE=99, dummy=0
 
         do k=1,nworkers
-           write(*,*) k
            call MPI_SEND(dummy, 1, MPI_INTEGER, &
                 k, FREE, MPI_COMM_WORLD, ierr)
         enddo
