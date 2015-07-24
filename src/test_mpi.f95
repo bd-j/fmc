@@ -51,14 +51,17 @@
         DOUBLE PRECISION :: one_lnp
         INTEGER :: ierr, taskid, ntasks, rqst, received_tag, status(MPI_STATUS_SIZE)
         INTEGER :: k, npos
-        LOGICAL :: wait=.TRUE.
+        LOGICAL :: wait=.TRUE., mpi_verbose=.TRUE.
 
         ! Initialize MPI, and get the total number of processes and
         ! your process number
         call MPI_INIT( ierr )
         call MPI_COMM_RANK( MPI_COMM_WORLD, taskid, ierr )
         call MPI_COMM_SIZE( MPI_COMM_WORLD, ntasks, ierr )
-
+        if (mpi_verbose) then
+           write(*,*) 'worker ',taskid, ' initialized'
+        endif
+        
         ! The worker's only job is to calculate the value of a function
         ! after receiving a parameter vector.
         if (taskid.ne.masterid) then
@@ -79,7 +82,11 @@
               ! received
               call MPI_RECV(pos(1,1), npos*ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
-
+              if (mpi_verbose) then
+                 write(*,*) 'Worker ', taskid, ' received ', npos, &
+                      ' parameter positions to chew on'
+              endif
+             
               ! Calculate the probability for these parameter positions.
               do k=1,npos
                  call emcee_lnprob(ndim, pos(:,k), one_lnp)
@@ -89,6 +96,10 @@
               ! Send the probabilities back to the master
               call MPI_ISEND(lp(1), npos, MPI_DOUBLE_PRECISION, &
                    masterid, BEGIN, MPI_COMM_WORLD, rqst, ierr)
+              if (mpi_verbose) then
+                 write(*,*) 'Worker ', taskid, ' sent ', npos, &
+                      ' lnps to ', masterid
+              endif
            enddo
            
         endif
@@ -114,7 +125,7 @@
            enddo
            
            ! Compute the initial log-probability, in parallel
-           write(*,*) "initialization"
+           write(*,*) "ensemble initialization"
            call function_parallel_map (ndim, nwalkers, ntasks-1, pos, lp)
 
            ! Start by running a burn-in of 200 steps.
