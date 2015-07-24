@@ -175,7 +175,9 @@
         double precision, intent(in), dimension(ndim,nk) :: pos
         double precision, intent(out), dimension(nk) :: lnpout
 
-        integer :: k, ierr, status(MPI_STATUS_SIZE)
+        integer, dimension(nworkers) :: rqst
+        integer, dimension(nworkers) :: statii(MPI_STATUS_SIZE)
+        integer :: k, ierr, status(MPI_STATUS_SIZE), r
         integer :: npos, walk_per_work, extra, offset
         logical :: mpi_verbose=.TRUE.
         !integer, dimension(nk) :: rqst, rstat
@@ -197,8 +199,9 @@
            endif
            ! Dispatch proposals to worker to figure out lnp
            ! The dispatched message has a tag that gives npos
-           call MPI_SEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
-                k, npos, MPI_COMM_WORLD, ierr)
+           call MPI_ISEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
+                k, npos, MPI_COMM_WORLD, r, ierr)
+           rqst(k) = r
            if (mpi_verbose) then
               write(*,*) 'Sent ', npos, ' tasks to worker ', k
            endif
@@ -206,7 +209,8 @@
            ! now increment offset
            offset = offset + npos
         enddo
-
+        
+        !call MPI_WaitAll(nworkers, rqst, statii, ierr)
         ! Loop over the workers to get the proposal lnp
         offset=1
         do k=1,nworkers
@@ -216,7 +220,8 @@
            else
               npos = walk_per_work
            endif
-           ! get the lnps from the workers and store
+           ! get the lnps from the workers and store, making sure the worker has finished first
+           call MPI_WAIT(rqst(k), status, ierr)
            call MPI_RECV(lnpout(offset), npos, MPI_DOUBLE_PRECISION, &
                 k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
            if (mpi_verbose) then
