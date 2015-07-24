@@ -177,6 +177,7 @@
 
         integer :: k, ierr, status(MPI_STATUS_SIZE)
         integer :: npos, walk_per_work, extra, offset
+        logical :: mpi_verbose=.TRUE.
         !integer, dimension(nk) :: rqst, rstat
 
         !Compute useful numbers for worker to walker ratio
@@ -198,6 +199,10 @@
            ! The dispatched message has a tag that gives npos
            call MPI_SEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
                 k, npos, MPI_COMM_WORLD, ierr)
+           if (mpi_verbose) then
+              write(*,*) 'Sent ', npos, ' tasks to worker ', k
+           endif
+           
            ! now increment offset
            offset = offset + npos
         enddo
@@ -214,6 +219,9 @@
            ! get the lnps from the workers and store
            call MPI_RECV(lnpout(offset), npos, MPI_DOUBLE_PRECISION, &
                 k, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
+           if (mpi_verbose) then
+              write(*,*) 'Got ', npos, ' tasks from worker ', k
+           endif
            ! now increment offset
            offset = offset + npos
         enddo
