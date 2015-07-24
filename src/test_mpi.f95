@@ -47,9 +47,9 @@
         integer, dimension(nwalkers) :: accept
         integer :: i, j
 
-        INTEGER, parameter :: masterid=0, KILL=99, BEGIN=0
+        INTEGER, parameter :: masterid=0, KILL=0
         DOUBLE PRECISION :: one_lnp
-        INTEGER :: ierr, taskid, ntasks, rqst, received_tag, status(MPI_STATUS_SIZE)
+        INTEGER :: ierr, taskid, ntasks, received_tag, status(MPI_STATUS_SIZE)
         INTEGER :: k, npos
         LOGICAL :: wait=.TRUE., mpi_verbose=.TRUE.
 
@@ -68,25 +68,30 @@
            
            ! Start event loop
            do while (wait)
-              ! Get the number of parameter positions that were
-              ! sent. This call does not return until until a
-              ! an integer is received
-              call MPI_RECV(npos, 1, MPI_INTEGER, &
+              ! Look for data from the master. This call can accept up
+              ! to ``nwalkers`` paramater positions, but it expects
+              ! that the actual number of positions is smaller and is
+              ! given by the MPI_TAG.  This call does not return until
+              ! a set of parameter vectors is received
+              call MPI_RECV(pos(1,1), nwalkers*ndim, MPI_DOUBLE_PRECISION, &
                    masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
+              
               ! figure out what tag it was sent with.  
               received_tag = status(MPI_TAG)
-              ! Check if this is the kill tag
-              if ((received_tag .EQ. KILL) .OR. (npos.EQ.0)) EXIT
-              ! Otherwise look for data from the master.  This call
-              ! does not return until a set of parameter vectors is
-              ! received
-              call MPI_RECV(pos(1,1), npos*ndim, MPI_DOUBLE_PRECISION, &
-                   masterid, MPI_ANY_TAG, MPI_COMM_WORLD, status, ierr)
+              ! Check if this is the kill tag or the number of positions
+              if ((received_tag .EQ. KILL) .OR. (received_tag .EQ. 0)) then
+                 if (mpi_verbose) then
+                    write(*,*) 'Worker ', taskid, ' told to go home'
+                 endif
+                 EXIT
+              else
+                 npos = received_tag
+              endif
               if (mpi_verbose) then
                  write(*,*) 'Worker ', taskid, ' received ', npos, &
                       ' parameter positions to chew on'
               endif
-             
+              
               ! Calculate the probability for these parameter positions.
               do k=1,npos
                  call emcee_lnprob(ndim, pos(:,k), one_lnp)
@@ -94,8 +99,8 @@
               enddo
               
               ! Send the probabilities back to the master
-              call MPI_ISEND(lp(1), npos, MPI_DOUBLE_PRECISION, &
-                   masterid, BEGIN, MPI_COMM_WORLD, rqst, ierr)
+              call MPI_SEND(lp(1), npos, MPI_DOUBLE_PRECISION, &
+                   masterid, 1, MPI_COMM_WORLD, ierr)
               if (mpi_verbose) then
                  write(*,*) 'Worker ', taskid, ' sent ', npos, &
                       ' lnps to ', masterid

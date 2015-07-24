@@ -130,7 +130,7 @@
         implicit none
         
         integer, intent(in) :: nworkers
-        integer :: k, ierr, FREE=99, dummy=0
+        integer :: k, ierr, FREE=0, dummy=0
 
         do k=1,nworkers
            call MPI_SEND(dummy, 1, MPI_INTEGER, &
@@ -175,7 +175,7 @@
         double precision, intent(in), dimension(ndim,nk) :: pos
         double precision, intent(out), dimension(nk) :: lnpout
 
-        integer :: k, ierr, status(MPI_STATUS_SIZE), BEGIN=0
+        integer :: k, ierr, status(MPI_STATUS_SIZE)
         integer :: npos, walk_per_work, extra, offset
         !integer, dimension(nk) :: rqst, rstat
 
@@ -194,12 +194,10 @@
            else
               npos = walk_per_work
            endif
-           ! Tell the worker how many positions to expect
-           call MPI_SEND(npos, 1, MPI_INTEGER, &
-                k, BEGIN, MPI_COMM_WORLD, ierr)
            ! Dispatch proposals to worker to figure out lnp
+           ! The dispatched message has a tag that gives npos
            call MPI_SEND(pos(1,offset), ndim*npos, MPI_DOUBLE_PRECISION, &
-                k, BEGIN, MPI_COMM_WORLD, ierr)
+                k, npos, MPI_COMM_WORLD, ierr)
            ! now increment offset
            offset = offset + npos
         enddo
